@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import sys
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -41,9 +42,10 @@ def format_product_message(product: Product) -> str:
     return "\n".join(lines)
 
 
-def collect_products() -> list[Product]:
+def collect_products() -> tuple[list[Product], set[str]]:
     session = requests.Session()
     products: list[Product] = []
+    succeeded: set[str] = set()
     errors: list[str] = []
 
     for label, fetcher in (
@@ -54,14 +56,15 @@ def collect_products() -> list[Product]:
             items = fetcher(session=session)
             log.info("%s: %s ürün alındı", label, len(items))
             products.extend(items)
-        except Exception as exc:  # noqa: BLE001 - surface scraper failures without aborting all
+            succeeded.add(label)
+        except Exception as exc:  # noqa: BLE001 - bir kaynak düşse diğerini sürdür
             msg = f"{label} scrape failed: {exc}"
             log.exception(msg)
             errors.append(msg)
 
     if not products and errors:
         raise RuntimeError("; ".join(errors))
-    return products
+    return products, succeeded
 
 
 def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_STATE) -> int:
@@ -77,13 +80,17 @@ def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_S
         log.info("Erken çıkış: sonraki kontrol %s", store.next_check_at.isoformat())
         return 0
 
-    products = collect_products()
+    products, succeeded_sources = collect_products()
     seen = store.seen
+    already_bootstrapped = store.bootstrapped_sources
     new_products: list[Product] = []
+    first_seen_by_source: dict[str, int] = {}
 
     for product in products:
-        if product.key not in seen:
-            new_products.append(product)
+        if product.source not in succeeded_sources:
+            continue
+
+        is_new = product.key not in seen
         seen[product.key] = {
             "name": product.name,
             "url": product.url,
@@ -91,14 +98,32 @@ def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_S
             "last_seen_at": now.isoformat(),
         }
 
-    if not store.bootstrapped:
-        log.info(
-            "İlk çalıştırma: %s ürün kaydedildi, bildirim gönderilmedi",
-            len(products),
-        )
-        store.bootstrapped = True
-        new_products = []
-    elif new_products:
+        if not is_new:
+            continue
+
+        if product.source not in already_bootstrapped:
+            first_seen_by_source[product.source] = first_seen_by_source.get(product.source, 0) + 1
+            continue
+
+        new_products.append(product)
+
+    for source in succeeded_sources:
+        if source not in already_bootstrapped:
+            count = first_seen_by_source.get(source, 0)
+            log.info(
+                "%s ilk kez başarılı: %s ürün kaydedildi, bildirim yok",
+                source,
+                count,
+            )
+            store.mark_source_bootstrapped(source)
+
+    interval_min = random.randint(7, 13)
+    store.last_check_at = now
+    store.next_check_at = now + timedelta(minutes=interval_min)
+    # Bildirimden önce kaydet: yarım kalan gönderimde tekrar spam olmasın.
+    store.save()
+
+    if new_products:
         log.info("%s yeni ürün bulundu", len(new_products))
         for product in new_products:
             message = format_product_message(product)
@@ -107,13 +132,10 @@ def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_S
             else:
                 send_telegram_message(token, chat_id, message)
                 log.info("Bildirim gönderildi: %s", product.name)
+                time.sleep(1.2)
     else:
         log.info("Yeni ürün yok")
 
-    interval_min = random.randint(7, 13)
-    store.last_check_at = now
-    store.next_check_at = now + timedelta(minutes=interval_min)
-    store.save()
     log.info("Sonraki kontrol ~%s dakika sonra (%s)", interval_min, store.next_check_at.isoformat())
     return 0
 
