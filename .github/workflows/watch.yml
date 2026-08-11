@@ -1,0 +1,60 @@
+name: Perfume Watcher
+
+on:
+  schedule:
+    # Her 5 dk tetiklenir; script 7-13 dk rastgele aralığı state ile yönetir.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Rastgele aralığı atla ve hemen kontrol et"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+concurrency:
+  group: perfume-watcher
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore watcher state
+        uses: actions/cache@v4
+        with:
+          path: data/state.json
+          key: perfume-watcher-state-${{ github.run_id }}
+          restore-keys: |
+            perfume-watcher-state-
+
+      - name: Run watcher
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          mkdir -p data
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            python -m watcher.main --force
+          else
+            python -m watcher.main
+          fi
