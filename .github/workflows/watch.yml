@@ -4,8 +4,8 @@ on:
   push:
     branches: [master]
   schedule:
-    # Her 5 dk tetiklenir; script 7-13 dk rastgele aralığı state ile yönetir.
-    - cron: "*/5 * * * *"
+    # Her 2 dk tetiklenir; script 2-5 dk rastgele aralığı state ile yönetir.
+    - cron: "*/2 * * * *"
   workflow_dispatch:
     inputs:
       force:

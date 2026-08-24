@@ -2,7 +2,7 @@
 
 Dekant Parfüm Depo ve Splitcim (Az Kalan Şişeler) sitelerinde **yeni ürün** çıktığında Telegram grubuna mesaj gönderir.
 
-GitHub Actions üzerinde 7–13 dakika arası rastgele aralıklarla çalışır.
+GitHub Actions üzerinde 2–5 dakika arası rastgele aralıklarla çalışır.
 
 ## 1) Telegram bot oluştur
 
@@ -58,11 +58,11 @@ python -m watcher.main --force
 
 ## Nasıl çalışır?
 
-- Actions her 5 dakikada bir tetiklenir
+- Actions her 2 dakikada bir tetiklenir
 - Script `data/state.json` içindeki `next_check_at` değerine bakar
 - Erken ise çıkar; zamanı geldiyse siteleri tarar
 - Yeni ürün varsa Telegram grubuna mesaj atar
-- Sonraki kontrolü 7–13 dk arası rastgele ayarlar
+- Sonraki kontrolü 2–5 dk arası rastgele ayarlar
 
 ## Notlar
 

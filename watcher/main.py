@@ -117,7 +117,7 @@ def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_S
             )
             store.mark_source_bootstrapped(source)
 
-    interval_min = random.randint(7, 13)
+    interval_min = random.randint(2, 5)
     store.last_check_at = now
     store.next_check_at = now + timedelta(minutes=interval_min)
     # Bildirimden önce kaydet: yarım kalan gönderimde tekrar spam olmasın.
