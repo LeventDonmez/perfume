@@ -117,9 +117,9 @@ def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_S
             )
             store.mark_source_bootstrapped(source)
 
-    interval_min = random.randint(2, 5)
+    interval_sec = random.randint(30, 120)
     store.last_check_at = now
-    store.next_check_at = now + timedelta(minutes=interval_min)
+    store.next_check_at = now + timedelta(seconds=interval_sec)
     # Bildirimden önce kaydet: yarım kalan gönderimde tekrar spam olmasın.
     store.save()
 
@@ -136,7 +136,7 @@ def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_S
     else:
         log.info("Yeni ürün yok")
 
-    log.info("Sonraki kontrol ~%s dakika sonra (%s)", interval_min, store.next_check_at.isoformat())
+    log.info("Sonraki kontrol ~%s saniye sonra (%s)", interval_sec, store.next_check_at.isoformat())
     return 0
 
 

@@ -4,8 +4,9 @@ on:
   push:
     branches: [master]
   schedule:
-    # Her 2 dk tetiklenir; script 2-5 dk rastgele aralığı state ile yönetir.
-    - cron: "*/2 * * * *"
+    # Her 1 dk tetiklenir; script 30sn-2dk rastgele aralığı state ile yönetir.
+    # Not: GitHub cron fiilen ~5 dk'ya kadar gecikebilir.
+    - cron: "* * * * *"
   workflow_dispatch:
     inputs:
       force:
