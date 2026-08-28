@@ -18,6 +18,8 @@ from watcher.telegram_notify import send_telegram_message
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_STATE = ROOT / "data" / "state.json"
+MIN_INTERVAL_SEC = 30
+MAX_INTERVAL_SEC = 120
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,7 +69,7 @@ def collect_products() -> tuple[list[Product], set[str]]:
     return products, succeeded
 
 
-def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_STATE) -> int:
+def run_once(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_STATE) -> int:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not dry_run and (not token or not chat_id):
@@ -77,8 +79,9 @@ def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_S
     now = utc_now()
 
     if not force and store.next_check_at and now < store.next_check_at:
-        log.info("Erken çıkış: sonraki kontrol %s", store.next_check_at.isoformat())
-        return 0
+        wait_sec = max(1, int((store.next_check_at - now).total_seconds()))
+        log.info("Erken: sonraki kontrol %s (~%ss)", store.next_check_at.isoformat(), wait_sec)
+        return wait_sec
 
     products, succeeded_sources = collect_products()
     seen = store.seen
@@ -117,7 +120,7 @@ def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_S
             )
             store.mark_source_bootstrapped(source)
 
-    interval_sec = random.randint(30, 120)
+    interval_sec = random.randint(MIN_INTERVAL_SEC, MAX_INTERVAL_SEC)
     store.last_check_at = now
     store.next_check_at = now + timedelta(seconds=interval_sec)
     # Bildirimden önce kaydet: yarım kalan gönderimde tekrar spam olmasın.
@@ -137,7 +140,24 @@ def run(force: bool = False, dry_run: bool = False, state_path: Path = DEFAULT_S
         log.info("Yeni ürün yok")
 
     log.info("Sonraki kontrol ~%s saniye sonra (%s)", interval_sec, store.next_check_at.isoformat())
-    return 0
+    return interval_sec
+
+
+def run_loop(dry_run: bool = False, state_path: Path = DEFAULT_STATE) -> int:
+    log.info(
+        "Loop başladı (%s-%s sn aralığı)",
+        MIN_INTERVAL_SEC,
+        MAX_INTERVAL_SEC,
+    )
+    while True:
+        try:
+            sleep_sec = run_once(force=True, dry_run=dry_run, state_path=state_path)
+        except Exception:  # noqa: BLE001 - döngü düşmesin
+            log.exception("Kontrol hata verdi, 60 sn sonra tekrar")
+            sleep_sec = 60
+        sleep_sec = max(MIN_INTERVAL_SEC, int(sleep_sec or MIN_INTERVAL_SEC))
+        log.info("%s sn uyku", sleep_sec)
+        time.sleep(sleep_sec)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -145,13 +165,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--force", action="store_true", help="Rastgele aralık kontrolünü atla")
     parser.add_argument("--dry-run", action="store_true", help="Telegram göndermeden çalıştır")
     parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Sürekli çalış (Oracle/VPS için 30sn-2dk aralık)",
+    )
+    parser.add_argument(
         "--state",
         type=Path,
         default=DEFAULT_STATE,
         help="State JSON yolu",
     )
     args = parser.parse_args(argv)
-    return run(force=args.force, dry_run=args.dry_run, state_path=args.state)
+    if args.loop:
+        run_loop(dry_run=args.dry_run, state_path=args.state)
+        return 0
+    run_once(force=args.force, dry_run=args.dry_run, state_path=args.state)
+    return 0
 
 
 if __name__ == "__main__":

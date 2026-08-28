@@ -1,0 +1,17 @@
+[Unit]
+Description=Perfume stock watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/perfume
+EnvironmentFile=/home/ubuntu/perfume/.env
+ExecStart=/home/ubuntu/perfume/.venv/bin/python -m watcher.main --loop
+Restart=always
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

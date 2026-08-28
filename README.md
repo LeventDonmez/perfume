@@ -2,70 +2,88 @@
 
 Dekant Parfüm Depo ve Splitcim (Az Kalan Şişeler) sitelerinde **yeni ürün** çıktığında Telegram grubuna mesaj gönderir.
 
-GitHub Actions üzerinde 30 saniye–2 dakika arası rastgele aralıklarla çalışır.
+Asıl çalışma yeri: **Oracle Cloud Always Free** VPS (30 sn–2 dk aralık).  
+GitHub Actions sadece manuel yedek olarak durur.
 
-## 1) Telegram bot oluştur
+## 1) Telegram (zaten kuruluysa atla)
 
-1. Telegram’da [@BotFather](https://t.me/BotFather) aç
-2. `/newbot` yaz
-3. Bot adı ve kullanıcı adı ver (ör. `perfume_watch_bot`)
-4. BotFather’ın verdiği **token**’ı kopyala  
-   Örnek: `7123456789:AAH...`
+1. [@BotFather](https://t.me/BotFather) → `/newbot` → token al
+2. Botu gruba ekle, gruba mesaj yaz
+3. Chat id al: `python -m watcher.get_chat_id`
 
-## 2) Gruba ekle ve chat id al
+## 2) Oracle Cloud Always Free kurulum
 
-1. Telegram’da bir grup oluştur (veya mevcut grubu kullan)
-2. Botu gruba ekle
-3. Gruba herhangi bir mesaj yaz (ör. `ping`)
-4. Tarayıcıda şunu aç (TOKEN yerine bot token’ını koy):
+### A) Hesap + VM
 
-```text
-https://api.telegram.org/botTOKEN/getUpdates
-```
+1. https://cloud.oracle.com adresinden Always Free hesap aç
+2. **Compute → Instances → Create instance**
+3. Image: **Canonical Ubuntu 22.04** (veya 24.04)
+4. Shape: **VM.Standard.A1.Flex** (Ampere, Always Free) — 1 OCPU / 6 GB yeterli
+5. SSH key ekle, instance oluştur
+6. Public IP’yi not et
 
-5. JSON içinde `"chat":{"id":-100xxxxxxxxxx}` değerini bul  
-   Grup id’leri genelde **-100** ile başlar.
+> Kapasite yoksa başka region dene (ör. Frankfurt, Amsterdam).
 
-> Bot mesaj göremiyorsa: gruptan bir mesaj daha atıp `getUpdates`’i yenile.  
-> Gerekirse bota grupta mesaj gönderme izni ver.
-
-## 3) GitHub’a kur
-
-1. Bu repoyu GitHub’a push et (**public** repo önerilir — Actions dakikası sınırsız)
-2. Repo → **Settings → Secrets and variables → Actions → New repository secret**
-   - `TELEGRAM_BOT_TOKEN` → bot token
-   - `TELEGRAM_CHAT_ID` → grup chat id (ör. `-1001234567890`)
-3. **Actions** sekmesinden `Perfume Watcher` workflow’unu aç
-4. **Run workflow** ile ilk kez manuel çalıştır
-
-İlk çalıştırmada mevcut ürünler sessizce kaydedilir (spam olmaz). Sonrakilerde sadece **yeni** ürünler bildirilir.
-
-## Yerel test
+### B) SSH ile bağlan
 
 ```bash
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-# source .venv/bin/activate
-
-pip install -r requirements.txt
-
-set TELEGRAM_BOT_TOKEN=...
-set TELEGRAM_CHAT_ID=...
-python -m watcher.main --force
+ssh -i your-key.pem ubuntu@PUBLIC_IP
 ```
 
-## Nasıl çalışır?
+### C) Projeyi kur
 
-- Actions her 1 dakikada bir tetiklenir
-- Script `data/state.json` içindeki `next_check_at` değerine bakar
-- Erken ise çıkar; zamanı geldiyse siteleri tarar
-- Yeni ürün varsa Telegram grubuna mesaj atar
-- Sonraki kontrolü 30 sn–2 dk arası rastgele ayarlar
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip
+
+git clone https://github.com/LeventDonmez/perfume.git
+cd perfume
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+cp deploy/env.example .env
+nano .env   # TELEGRAM_BOT_TOKEN ve TELEGRAM_CHAT_ID doldur
+```
+
+### D) systemd servisi (reboot sonrası da çalışsın)
+
+```bash
+sudo cp deploy/perfume-watcher.service /etc/systemd/system/
+# User/yol farklıysa service dosyasını düzenle:
+# sudo nano /etc/systemd/system/perfume-watcher.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now perfume-watcher
+sudo systemctl status perfume-watcher
+```
+
+Log:
+
+```bash
+journalctl -u perfume-watcher -f
+```
+
+İlk çalışmada mevcut ürünler sessizce kaydedilir; sonra sadece yeni ürünler Telegram’a gider.
+
+## Yerel / tek seferlik test
+
+```bash
+pip install -r requirements.txt
+export TELEGRAM_BOT_TOKEN=...
+export TELEGRAM_CHAT_ID=...
+python -m watcher.main --force          # bir kez
+python -m watcher.main --loop           # sürekli (VPS)
+```
+
+## GitHub Actions
+
+Schedule kapalı. Sadece **Actions → Perfume Watcher → Run workflow** ile manuel yedek çalıştırabilirsin.  
+Oracle açıkken Actions’ı sürekli çalıştırma (çift bildirim olur).
 
 ## Notlar
 
-- GitHub cron resmi olarak en sık ~5 dk çalıştırır; 30 sn–2 dk hedefi best-effort (gecikme olabilir)
-- State, Actions cache ile saklanır; cache silinirse bir kez daha bootstrap olur (toplu spam yok)
+- Aralık: rastgele **30 sn – 2 dk**
+- State: `data/state.json` (VPS diskinde kalır)
 - Sitelerin HTML’i değişirse scraper güncellenmeli

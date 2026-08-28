@@ -1,12 +1,7 @@
 name: Perfume Watcher
 
+# Oracle VPS asıl çalıştırıcıdır. Bu workflow sadece manuel yedek içindir.
 on:
-  push:
-    branches: [master]
-  schedule:
-    # Her 1 dk tetiklenir; script 30sn-2dk rastgele aralığı state ile yönetir.
-    # Not: GitHub cron fiilen ~5 dk'ya kadar gecikebilir.
-    - cron: "* * * * *"
   workflow_dispatch:
     inputs:
       force:
@@ -56,9 +51,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           mkdir -p data
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
-            python -m watcher.main --force
-          elif [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ inputs.force }}" = "true" ]; then
             python -m watcher.main --force
           else
             python -m watcher.main
